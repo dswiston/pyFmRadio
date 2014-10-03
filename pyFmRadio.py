@@ -10,7 +10,6 @@ from scipy.signal import lfilter
 from rtlsdr import RtlSdr
 
 
-
 class FileReader(threading.Thread):
   def run(self):
 
@@ -108,7 +107,7 @@ class FMDemod(threading.Thread):
       stereoAudioData[::2] = audioDataL.astype(np.int16);
       stereoAudioData[1::2] = audioDataR.astype(np.int16);
       """
-      
+
       # Put the audio onto the queue and wait for it to be received
       audioQueue.put(audioDataLplusR.astype(np.uint16));
       audioQueue.join();
@@ -211,8 +210,8 @@ sdr.sample_rate = 1e6  # Hz
 freq = raw_input('Choose a station frequency: ');
 try:
   freq = float(freq);
-  sdr.center_freq = freq-200e3     # Hz
-  sdr.gain = 'auto'
+  sdr.center_freq = freq - 200e3;     # Hz
+  sdr.gain = 'auto';
   #fileRead.start();
   fmDemod.start();
   audioPlay.start();
