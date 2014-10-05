@@ -2,14 +2,13 @@
 
 import threading
 import Queue
-import time
 import struct
 import ao
 import numpy as np
 from scipy.signal import lfilter
 from scipy.signal import hilbert
 from rtlsdr import RtlSdr
-
+    
 
 class FileReader(threading.Thread):
   def run(self):
@@ -24,71 +23,68 @@ class FileReader(threading.Thread):
       data = fid.read(blkSize);
             
 
+# Callback used by rtlsdr library, is called when data is ready
 def sdrCallback(samples, rtlsdr_obj):
-  dataQueue.put(np.array(samples));
-    
+  # Put data on the queue
+  dataQueue.put(np.array(samples,dtype=np.complex64));
+
 
 class FMDemod(threading.Thread):
   def run(self):
-
-    time.sleep(1);
     
-    # Create filter to downsample to 200KHz
-    stageOneFilt = [-3.59558849352512e-05,-8.96980379207209e-05,-0.000177018129702616,-0.000284225463855195,-0.000377179255733887,-0.000392842855176856,-0.000238992154324545,0.000197162108922646,0.00102950812178301,0.00234332733360650,0.00415920831004696,0.00639739693554639,0.00885235663103450,0.0111873998115123,0.0129580383890179,0.0136678758676256,0.0128546099437662,0.0101957113051566,0.00561640193005583,-0.000622297788257071,-0.00787842641679388,-0.0151456025343175,-0.0211409442597648,-0.0244612258199640,-0.0237900539217606,-0.0181259503597799,-0.00699298796011055,0.00940618872114674,0.0301288876898665,0.0535430328936014,0.0774918667314895,0.0995541183265144,0.117362670555239,0.128932259393025,0.132942985095165,0.128932259393025,0.117362670555239,0.0995541183265144,0.0774918667314895,0.0535430328936014,0.0301288876898665,0.00940618872114674,-0.00699298796011055,-0.0181259503597799,-0.0237900539217606,-0.0244612258199640,-0.0211409442597648,-0.0151456025343175,-0.00787842641679388,-0.000622297788257071,0.00561640193005583,0.0101957113051566,0.0128546099437662,0.0136678758676256,0.0129580383890179,0.0111873998115123,0.00885235663103450,0.00639739693554639,0.00415920831004696,0.00234332733360650,0.00102950812178301,0.000197162108922646,-0.000238992154324545,-0.000392842855176856,-0.000377179255733887,-0.000284225463855195,-0.000177018129702616,-8.96980379207209e-05,-3.59558849352512e-05,0]
-    # Create filter to downsample to 20KHz
-    stageTwoFilt = [-0.00119626911550306,-0.00142546170364882,-0.00187744502104585,-0.00201701676228193,-0.00162817459020468,-0.000557487335421441,0.00122343806080337,0.00356350639674811,0.00612689813101657,0.00842445178475785,0.00990383156440624,0.0100757692616582,0.00865198056849580,0.00566181492072065,0.00150809535459767,-0.00305861160383326,-0.00706234834705832,-0.00950392490765292,-0.00960435635798143,-0.00703550797431447,-0.00207570414372595,0.00435841720332892,0.0108345011188760,0.0156744184636397,0.0173275806253855,0.0147733535863384,0.00786009225733559,-0.00250576384548369,-0.0143854332021002,-0.0250689244534925,-0.0315407793252962,-0.0310705762181423,-0.0218119645129463,-0.00328372400193613,0.0233795369353430,0.0554763088057064,0.0890971156152812,0.119739200111151,0.143065983583302,0.155666796524906,0.155666796524906,0.143065983583302,0.119739200111151,0.0890971156152812,0.0554763088057064,0.0233795369353430,-0.00328372400193613,-0.0218119645129463,-0.0310705762181423,-0.0315407793252962,-0.0250689244534925,-0.0143854332021002,-0.00250576384548369,0.00786009225733559,0.0147733535863384,0.0173275806253855,0.0156744184636397,0.0108345011188760,0.00435841720332892,-0.00207570414372595,-0.00703550797431447,-0.00960435635798143,-0.00950392490765292,-0.00706234834705832,-0.00305861160383326,0.00150809535459767,0.00566181492072065,0.00865198056849580,0.0100757692616582,0.00990383156440624,0.00842445178475785,0.00612689813101657,0.00356350639674811,0.00122343806080337,-0.000557487335421441,-0.00162817459020468,-0.00201701676228193,-0.00187744502104585,-0.00142546170364882,-0.00119626911550306]
-    # Define the decimation rates at each stage        
-    stageOneDec = 5;
-    stageTwoDec = 5;         
+    # Define the FIR filter taps used to extract the audio channels
+    audioFilt = np.array([-0.00287983581133987,-0.000926407885047457,-0.000635251149646470,1.62845117817972e-05,0.00101916904478077,0.00229943112316492,0.00371371303782623,0.00506045151836540,0.00610736757778672,0.00662771338675820,0.00644014551958777,0.00544825751160880,0.00367332418708154,0.00127145849802163,-0.00147184344296973,-0.00417153634486715,-0.00639395493204246,-0.00772265459702439,-0.00783097318267360,-0.00655054644922716,-0.00392290604321896,-0.000222050906968737,0.00405977873813144,0.00826470411817517,0.0116557586699066,0.0135276814247624,0.0133274609455304,0.0107664845536791,0.00590519748125791,-0.000806134283814829,-0.00854123766576385,-0.0161694590376135,-0.0223801909792768,-0.0258466830262674,-0.0254085058655117,-0.0202474878245569,-0.0100315190547527,0.00499593742645088,0.0239963553790494,0.0455936584130458,0.0680052492125116,0.0892321839791224,0.107284945330503,0.120415688114799,0.127326567918114,0.127326567918114,0.120415688114799,0.107284945330503,0.0892321839791224,0.0680052492125116,0.0455936584130458,0.0239963553790494,0.00499593742645088,-0.0100315190547527,-0.0202474878245569,-0.0254085058655117,-0.0258466830262674,-0.0223801909792768,-0.0161694590376135,-0.00854123766576385,-0.000806134283814829,0.00590519748125791,0.0107664845536791,0.0133274609455304,0.0135276814247624,0.0116557586699066,0.00826470411817517,0.00405977873813144,-0.000222050906968737,-0.00392290604321896,-0.00655054644922716,-0.00783097318267360,-0.00772265459702439,-0.00639395493204246,-0.00417153634486715,-0.00147184344296973,0.00127145849802163,0.00367332418708154,0.00544825751160880,0.00644014551958777,0.00662771338675820,0.00610736757778672,0.00506045151836540,0.00371371303782623,0.00229943112316492,0.00101916904478077,1.62845117817972e-05,-0.000635251149646470,-0.000926407885047457,-0.00287983581133987]);
+  
+    # Define the decimation rate to convert from the sampling rate to the audio rate        
+    audioDec = 6;
     
-    # Get the next chunk of data
-    data = dataQueue.get();
-    dataQueue.task_done();
-    blkSize = len(data);
+    # Create the audio filter states, initially filled w/zeros
+    audioFiltStateLplusR = np.zeros((audioDec,np.size(audioFilt)/audioDec-1),dtype=np.complex64);
+    audioFiltStateLminusR = np.zeros((audioDec,np.size(audioFilt)/audioDec-1),dtype=np.complex64);
     
-    # Downmix the signal, the dongle has a DC filter so we dwell offset
-    demodFreq = 200e3;
     # FM carrier frequency
-    carrierFreq = 19e3;
+    pilotFreq = 19e3;
     # Define the raw sampling rate
-    fs = 1e6;
-    # Create the demodulation signal to baseband the FM station
-    sigTime = np.linspace(0,blkSize,blkSize);
-    sigTime = sigTime / fs;
-    demodSig = np.exp(-1j*2*np.pi*demodFreq*sigTime);
+    fs = 250e3;
     # Create the IIR peaking filter that isolates the carrier
     # This is important for demodulating the DSB-CS R-L signal that is used for stereo FM
-    filtFreq = carrierFreq / demodFreq * 2;
-    bw = 5 / demodFreq;
-    [carrierFiltB,carrierFiltA] = PeakFilterDesign(filtFreq,bw);
+    filtFreq = pilotFreq / (fs) * 2;
+    bw = 5 / (fs);
+    [pilotFiltB,pilotFiltA] = PeakFilterDesign(filtFreq,bw);
+    pilotFiltState = np.zeros(np.size(pilotFiltB)-1,dtype=np.float32);
+    
        
     while(1):
-                    
-      # Keep only 200KHz of BW
-      decData = PolyphaseDecimate(stageOneFilt,data,demodSig,0,stageOneDec);
+      
+      # Get the next chunk of raw data
+      data = dataQueue.get();
+      dataQueue.task_done();
+      
       # Perform the FM Demodulation step
-      fmDemod = FmDemodulate(decData);
+      fmDemod = FmDemodulate(data);
       # Add an element to keep a proper size for the polyphase filtering
       fmDemod = np.concatenate(([0],fmDemod));
-  
-      # Filter the input to the audio rate (20KHz)
-      audioDataLplusR = np.real(PolyphaseDecimate(stageTwoFilt,fmDemod,[],0,stageTwoDec));
       
-      # Isolate the carrier signal
-      stereoCarrier = lfilter(carrierFiltB,carrierFiltA,fmDemod);
-      # Scale the carrier to full-scale since it will be used to demodulate
-      stereoCarrier = stereoCarrier / np.sqrt(np.mean(stereoCarrier**2)) / np.sqrt(2);
-      # Convert the carrier to a complex representation, then double the frequency
+      # Filter and decimate the input to extract the L+R signal (20.833KHz)
+      (audioDataLplusR,audioFiltStateLplusR) = PolyphaseDecimate(audioFilt,fmDemod,[],audioFiltStateLplusR,audioDec);
+      audioDataLplusR = np.real(audioDataLplusR);
+
+      # Isolate the pilot signal
+      (pilot,pilotFiltState) = lfilter(pilotFiltB,pilotFiltA,fmDemod,zi=pilotFiltState);
+      # Scale the pilot to full-scale since it will be used to demodulate
+      pilot = pilot / np.sqrt(np.mean(pilot**2)) / np.sqrt(2);
+      # Convert the pilot to a complex representation, then double the frequency
       # This signal is used demodulate the L-R DSB-SC signal 
-      stereoDemod = hilbert(stereoCarrier)**2;
-      # Filter the input to extract the L-R signal 
-      audioDataLminusR = np.imag(PolyphaseDecimate(stageTwoFilt,fmDemod,stereoDemod,0,stageTwoDec));
+      stereoCarrier = hilbert(pilot)**2;
+      # Mix, filter, and decimate the input to extract the L-R signal (20.833KHz)
+      (audioDataLminusR,audioFiltStateLminusR) = PolyphaseDecimate(audioFilt,fmDemod,stereoCarrier,audioFiltStateLminusR,audioDec);
+      audioDataLminusR = np.real(audioDataLminusR);
       
       # Scale and DC filter the audio before playing it
       (audioDataLplusR, audioDataLminusR) = ProcessAudio(audioDataLplusR,audioDataLminusR);
 
       # Apply the de-emphasis filter
-      audioFs = fs/stageOneDec/stageTwoDec;
+      audioFs = fs/audioDec;
       audioDataLplusR = DeEmphasisFilter(audioDataLplusR,audioFs);
       audioDataLminusR = DeEmphasisFilter(audioDataLminusR,audioFs);
 
@@ -103,22 +99,18 @@ class FMDemod(threading.Thread):
       audioData[1::2] = audioDataR.astype(np.int16);
 
       # If mono is desired, uncomment this line
-      #audioData = audioDataLplusR;
+      audioData = audioDataLplusR;
 
       # Put the audio onto the queue and wait for it to be received
       audioQueue.put(audioData.astype(np.uint16));
       audioQueue.join();
-      
-      # Get the next chunk of data
-      data = dataQueue.get();
-      dataQueue.task_done();
-            
+
 
 class AudioPlay(threading.Thread):
   def run(self):
 
     # Create the audio device - change channels to '1' if mono is desired
-    pcm = ao.AudioDevice("pulse", bits=16, rate=40000, channels=2, byte_format=1);        
+    pcm = ao.AudioDevice("pulse", bits=16, rate=41666, channels=1, byte_format=1);        
 
     while(1):
       audioData = audioQueue.get();
@@ -147,10 +139,10 @@ def ConvertData(tmp,blkSize):
   readFormat = str(blkSize) + 'B'
   tmp = struct.unpack(readFormat,tmp);
   # Convert to a numpy array of floats
-  tmp = np.asarray(tmp,dtype=np.float);
+  tmp = np.asarray(tmp,dtype=np.float32);
   # Subtract 127 from the data (to convert to signed)
   tmp = tmp - 127;
-  data = np.zeros(len(tmp)/2, dtype=complex);
+  data = np.zeros(len(tmp)/2, dtype=np.complex64);
   data.real = tmp[::2];
   data.imag = tmp[1::2];
   return data
@@ -170,18 +162,24 @@ def PolyphaseDecimate(filt,inputData,mixValues,filtState,decRate):
   polyFilt = np.flipud(polyFilt);
   polyInput = np.reshape(inputData,[decRate,-1],order='F');
   # Pre-allocate the array
-  tmp = np.zeros(shape=(decRate,len(inputData)/decRate), dtype=complex);
+  tmp = np.zeros(shape=(decRate,len(inputData)/decRate), dtype=np.complex64);
 
   # Perform the mixing (only if necessary)
   if len(mixValues) > 0:
     polyMix = np.reshape(mixValues,[decRate,-1],order='F');
     polyInput = polyInput * polyMix;
   
-  # Perform the filtering
-  for ndx in range(decRate):
-    tmp[ndx,:] = lfilter(polyFilt[ndx,:],1,polyInput[ndx,:])
-  
-  return np.sum(tmp,axis=0);
+  # Perform the filtering - there are two ways out of the function
+  if np.size(filtState) == 0:
+    # A filter state was not passed in, ignore tracking states
+    for ndx in range(decRate):
+      tmp[ndx,:] = lfilter(polyFilt[ndx,:],1,polyInput[ndx,:]);
+    return np.sum(tmp,axis=0);
+  else:
+    # A filter state was passed in. Supply it to the filter routine and pass back the updated state
+    for ndx in range(decRate):
+      (tmp[ndx,:],filtState[ndx,:]) = lfilter(polyFilt[ndx,:],1,polyInput[ndx,:],zi=filtState[ndx,:]);
+    return (np.sum(tmp,axis=0),filtState);
         
         
 def DeEmphasisFilter(audio,fs):
@@ -196,6 +194,7 @@ def DeEmphasisFilter(audio,fs):
   
   # Perform the filtering and return the result
   return lfilter(b,a,audio);
+
 
 def PeakFilterDesign(freq,bw):
   # Design a 2nd order IIR peaking filter
@@ -224,17 +223,17 @@ audioQueue = Queue.Queue([1]);
 sdr = RtlSdr();
 
 # configure device
-sdr.sample_rate = 1e6  # Hz
+sdr.sample_rate = 250e3;  # Hz
 freq = raw_input('Choose a station frequency: ');
 
 try:
   freq = float(freq);
-  sdr.center_freq = freq - 200e3;     # Hz
-  sdr.gain = 'auto';
+  sdr.center_freq = freq;
+  sdr.gain = 'auto'
   #fileRead.start();
   fmDemod.start();
   audioPlay.start();
-  sdr.read_samples_async(sdrCallback, 1024*1000);    
+  sdr.read_samples_async(sdrCallback, 1024*300);    
     
 except ValueError:
   print("Invalid number");
