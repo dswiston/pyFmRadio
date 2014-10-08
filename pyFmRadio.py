@@ -3,13 +3,13 @@
 import threading
 import Queue
 import struct
-import ao
+import pyaudio
 import numpy as np
 from scipy.signal import lfilter
 from scipy.signal import hilbert
 from rtlsdr import RtlSdr
-    
 
+    
 class FileReader(threading.Thread):
   def run(self):
 
@@ -33,6 +33,7 @@ class FMDemod(threading.Thread):
   def run(self):
     
     # Define the FIR filter taps used to extract the audio channels
+    # (90 taps, equiripple, fc = 19KHz, +/-0.4dB ripple in pass band, -47dB stop-band)
     audioFilt = np.array([-0.00287983581133987,-0.000926407885047457,-0.000635251149646470,1.62845117817972e-05,0.00101916904478077,0.00229943112316492,0.00371371303782623,0.00506045151836540,0.00610736757778672,0.00662771338675820,0.00644014551958777,0.00544825751160880,0.00367332418708154,0.00127145849802163,-0.00147184344296973,-0.00417153634486715,-0.00639395493204246,-0.00772265459702439,-0.00783097318267360,-0.00655054644922716,-0.00392290604321896,-0.000222050906968737,0.00405977873813144,0.00826470411817517,0.0116557586699066,0.0135276814247624,0.0133274609455304,0.0107664845536791,0.00590519748125791,-0.000806134283814829,-0.00854123766576385,-0.0161694590376135,-0.0223801909792768,-0.0258466830262674,-0.0254085058655117,-0.0202474878245569,-0.0100315190547527,0.00499593742645088,0.0239963553790494,0.0455936584130458,0.0680052492125116,0.0892321839791224,0.107284945330503,0.120415688114799,0.127326567918114,0.127326567918114,0.120415688114799,0.107284945330503,0.0892321839791224,0.0680052492125116,0.0455936584130458,0.0239963553790494,0.00499593742645088,-0.0100315190547527,-0.0202474878245569,-0.0254085058655117,-0.0258466830262674,-0.0223801909792768,-0.0161694590376135,-0.00854123766576385,-0.000806134283814829,0.00590519748125791,0.0107664845536791,0.0133274609455304,0.0135276814247624,0.0116557586699066,0.00826470411817517,0.00405977873813144,-0.000222050906968737,-0.00392290604321896,-0.00655054644922716,-0.00783097318267360,-0.00772265459702439,-0.00639395493204246,-0.00417153634486715,-0.00147184344296973,0.00127145849802163,0.00367332418708154,0.00544825751160880,0.00644014551958777,0.00662771338675820,0.00610736757778672,0.00506045151836540,0.00371371303782623,0.00229943112316492,0.00101916904478077,1.62845117817972e-05,-0.000635251149646470,-0.000926407885047457,-0.00287983581133987]);
   
     # Define the decimation rate to convert from the sampling rate to the audio rate        
@@ -99,26 +100,35 @@ class FMDemod(threading.Thread):
       audioData[1::2] = audioDataR.astype(np.int16);
 
       # If mono is desired, uncomment this line
-      audioData = audioDataLplusR;
+      #audioData = audioDataLplusR.astype(np.int16);
 
       # Put the audio onto the queue and wait for it to be received
-      audioQueue.put(audioData.astype(np.uint16));
+      audioQueue.put(audioData);
       audioQueue.join();
 
 
 class AudioPlay(threading.Thread):
   def run(self):
 
-    # Create the audio device - change channels to '1' if mono is desired
-    pcm = ao.AudioDevice("pulse", bits=16, rate=41666, channels=1, byte_format=1);        
-
+    # Grab initial data off of the queue
+    audioData = audioQueue.get();
+    audioQueue.task_done();
+    
+    # Create the audio device
+    audioObject = pyaudio.PyAudio();
+    # Create stream object associated with the audio device
+    # If mono is desired, change the number of channels to '1' here
+    pcmStream = audioObject.open(format=pyaudio.paInt16,channels=2,rate=41666,output=True,frames_per_buffer=np.size(audioData)*2)
+    
     while(1):
+      # Play the audio - the Python wrapper assumes a string of bytes. . . 
+      # It doesn't have to be this way but that is pyaudio's assumption
+      pcmStream.write(str(bytearray(audioData)));
+      # Grab new data off of the queue
       audioData = audioQueue.get();
       audioQueue.task_done();
-      # Play the audio
-      pcm.play(audioData);
-            
-            
+
+
 def ProcessAudio(audio1,audio2):
     
   # Remove the DC component of the audio
@@ -212,7 +222,7 @@ def PeakFilterDesign(freq,bw):
   
   return (num,den);
 
-    
+
 fmDemod = FMDemod();
 fileRead = FileReader();
 audioPlay = AudioPlay();
@@ -224,6 +234,7 @@ sdr = RtlSdr();
 
 # configure device
 sdr.sample_rate = 250e3;  # Hz
+numSampsRead = 1024*300;
 freq = raw_input('Choose a station frequency: ');
 
 try:
@@ -233,7 +244,7 @@ try:
   #fileRead.start();
   fmDemod.start();
   audioPlay.start();
-  sdr.read_samples_async(sdrCallback, 1024*300);    
+  sdr.read_samples_async(sdrCallback, numSampsRead);    
     
 except ValueError:
   print("Invalid number");

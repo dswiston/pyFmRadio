@@ -11,7 +11,7 @@ Currently the receiver demodulates a stereo FM signal (left & right).
 The code works with Python2.7 and following libraries
 - SciPy
 - NumPy
-- libao and pyao for audio playback
+- portaudio and pyaudio for audio playback
 - rtlsdr and pyrtlsdr for interfacing with the SDR
 
 **@dswiston**
