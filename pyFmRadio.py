@@ -1,3 +1,6 @@
+# Copyright 2014 David Swiston
+# This program is distributed under the terms of the GNU General Public License v2
+
 #!/usr/bin/python
 
 import threading
