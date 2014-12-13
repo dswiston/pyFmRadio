@@ -11,6 +11,7 @@ import numpy as np
 from scipy.signal import lfilter
 from scipy.signal import hilbert
 from rtlsdr import RtlSdr
+from rds import Rds
 
 
 class FileReader(threading.Thread):
@@ -54,7 +55,8 @@ class FMDemod(threading.Thread):
     # Create the RDBS filter states, initially filled w/zeros
     rdbsFiltState = np.zeros((rdbsDec,np.size(rdbsFilt)/rdbsDec-1),dtype=np.complex64);
     rrCosFiltState = np.zeros(np.size(rrCosFilt)-1,dtype=np.complex64);
-    
+    rbds = Rds();
+
     
     # FM carrier frequency
     pilotFreq = 19e3;
@@ -97,7 +99,13 @@ class FMDemod(threading.Thread):
       rdbsCarrier = hilbert(pilot)**(3.0);
       (rdbs,rdbsFiltState) = PolyphaseDecimate(rdbsFilt,fmDemod,rdbsCarrier,rdbsFiltState,rdbsDec);
       (rdbs,rrCosFiltState) = lfilter(rrCosFilt,1,rdbs,zi=rrCosFiltState);
-
+      rbds.NewData(rdbs);
+      rbds.ProcessBlocks();
+      
+      print(rbds.callSign);
+      print(rbds.ptyString);
+      print(rbds.radioText);
+      
       # Scale and DC filter the audio before playing it
       (audioDataLplusR, audioDataLminusR) = ProcessAudio(audioDataLplusR,audioDataLminusR);
 

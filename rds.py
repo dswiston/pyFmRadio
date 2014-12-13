@@ -105,12 +105,14 @@ class Rds():
 
     dataLen = len(self.rbdsData);
     magRbdsData = abs(self.rbdsData);
-    sampNdx = [];
+    sampNdx = np.zeros(dataLen,dtype=np.uint32);
+    ndx = 0;    
     
     while(self.sampValPred+1 < dataLen):
       
       # Append the current symbol location estimate
-      sampNdx = np.append(sampNdx,self.sampValPred);
+      sampNdx[ndx] = self.sampValPred;
+      ndx += 1;
       
       errVal = -int(magRbdsData[self.sampValPred-1] > magRbdsData[self.sampValPred] ) \
                + int(magRbdsData[self.sampValPred+1] > magRbdsData[self.sampValPred] );
@@ -123,7 +125,7 @@ class Rds():
       self.sampValPred = round(self.sampVal); 
       
     # Store the symbols using the correct sample points
-    self.rbdsSymbols = self.rbdsData[np.uint32(sampNdx)];
+    self.rbdsSymbols = self.rbdsData[sampNdx[0:ndx]];
     
     # Clean up and prepare for the next iteration
     # There is no overlap between this block and the next, discard the current block
@@ -165,25 +167,30 @@ class Rds():
 
   def BitDecoding(self):
 
+    numBits = len(self.bits);
+    decodedBits = np.zeros(numBits,dtype=np.bool);
     if (self.decodedBit == None):
-      decodedBits = np.array([],dtype=np.bool);
+      decodedNdx = 0;
     else:
-      decodedBits = self.decodedBit;
+      decodedNdx = 1;
+      decodedBits = np.append(self.decodedBit,decodedBits);
 
     # Manchester decode
-    ndx = 0;
-    while ndx < len(self.bits)-1:
-      if (self.bits[ndx] == self.bits[ndx+1]):
+    bitNdx = 0;
+    while bitNdx < len(self.bits)-1:
+      if (self.bits[bitNdx] == self.bits[bitNdx+1]):
         self.manchMOfN[self.manchMissNdx] = 1;
         if (np.sum(self.manchMOfN) > 2):
-          print('Sync Error!');
-          ndx = ndx + 1;
+          bitNdx = bitNdx + 1;
           self.manchMOfN = self.manchMOfN * 0;
       else:
         self.manchMOfN[self.manchMissNdx] = 0;
-      decodedBits = np.append(decodedBits,self.bits[ndx] == 1);
-      ndx = ndx + 2;
+      decodedBits[decodedNdx] = (self.bits[bitNdx] == 1);
+      bitNdx = bitNdx + 2;
+      decodedNdx += 1;
       self.manchMissNdx = np.mod(self.manchMissNdx+1,8);
+    
+    decodedBits = decodedBits[0:decodedNdx];    
     
     # Save off the last bit for future bit decoding
     self.decodedBit = decodedBits[-1];
@@ -193,13 +200,13 @@ class Rds():
     self.decodedBits = np.append(self.decodedBits,decodedBits);
     
     #
-    self.bits = self.bits[ndx:];
+    self.bits = self.bits[bitNdx:];
     
 
   def SyncToBlock(self):
 
     # Search mode
-    while (self.syncNdx < len(self.decodedBits)-27):
+    while (self.syncNdx < len(self.decodedBits)-26):
       syndrome = self.CalculateSyndrome( self.decodedBits[self.syncNdx:self.syncNdx+26] );
       if (np.any(syndrome == self.syndromes)):
         self.blockNdx = np.flatnonzero(syndrome == self.syndromes);
@@ -293,21 +300,20 @@ class Rds():
     
     
   def ProcessBlocks(self):
-    
+
     # This function assumes new data has been placed into the buffer queue
     if (len(self.rbdsData) == 0):
       return;
       
-    # Perform symbol syncronization first
+    # Perform symbol synchronization first
     self.SymbolSyncronization();
-    # Syncronize to the carrier
+    # Synchronize to the carrier
     self.CarrierSyncronization();
-    # Perform bit decoding via manchester decoding
+    # Perform bit decoding via Manchester decoding
     self.BitDecoding();
     
     # Loop over all the data in the queue and extract the block contents
     while (self.syncNdx < len(self.decodedBits)-26):
-      
       # First things first, if we are not block locked or lost block lock for some reason, obtain it
       if (self.sync == 0):    
         self.SyncToBlock();
@@ -316,15 +322,15 @@ class Rds():
       # Extract data from the current block
       self.DecodeBlock();
       
-#    self.decodedBits = self.decodedBits[self.syncNdx:];
+    self.decodedBits = self.decodedBits[self.syncNdx:];
     self.syncNdx = 0;
       
       
   def DecodeBlock(self):
-    
+
     syndrome = self.CalculateSyndrome( self.decodedBits[self.syncNdx:self.syncNdx+26] );  
 
-    # First, check to see if there was a bit error or there is a block syncronization error
+    # First, check to see if there was a bit error or there is a block synchronization error
     if (syndrome == self.syndromes[self.blockNdx]):
       # There is no error
       # Indicate no error in the MofN counter
@@ -339,9 +345,10 @@ class Rds():
       # Increment the syncNdx so that the next time we process the next block
       self.syncNdx += 26;
       self.blockNdx += 1;
+      self.blockMissNdx += 1;
 
     # The syndrome did not match expected.  Either encountered a bit error or we have a block 
-    # syncronization error.
+    # synchronization error.
     else:
       
       # Try to correct the error
@@ -356,15 +363,16 @@ class Rds():
         # May have been an unrecoverable bit error OR the checkbits (last 10 bits) contained an error
         self.blockMOfN[self.blockMissNdx] = 1;
         if (np.sum(self.blockMOfN) > 2):
-          print('Sync Error!');
           self.sync = 0;
           self.blockMOfN = self.blockMOfN * 0;
           self.ResetBlockInfo();
         else:
           self.syncNdx += 26;
           self.blockNdx += 1;
+        self.blockMissNdx += 1;
 
-    self.blockNdx = np.mod(self.blockNdx,4);  
+    self.blockMissNdx = np.mod(self.blockMissNdx,8);
+    self.blockNdx = np.mod(self.blockNdx,4);
 
 
   def DecodeBlockZero(self):
@@ -376,7 +384,7 @@ class Rds():
     self.groupType = self.ArrayBinaryToDecimal(self.decodedBits[self.syncNdx:self.syncNdx+4]);
     self.version = self.decodedBits[self.syncNdx+4];
     pty = self.ArrayBinaryToDecimal(self.decodedBits[self.syncNdx+6:self.syncNdx+11]);
-    self.ptyString = self.rdsPtyLabels[pty-1];
+    self.ptyString = self.rdsPtyLabels[pty];
     
     if ((self.groupType == 2) & (self.version == 0)):
       self.radioTxtLoc = self.ArrayBinaryToDecimal(self.decodedBits[self.syncNdx+12:self.syncNdx+16]);
