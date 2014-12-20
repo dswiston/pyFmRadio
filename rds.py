@@ -29,7 +29,6 @@ class Rds():
   errFilt = 0.0;
   errVal = 0.0;
   phsVal = np.array(0,dtype=np.float32);
-  phsInc = np.array(0,dtype=np.float32);
   # Output bitstream
   bits = np.array([],dtype=np.bool);
   
@@ -143,7 +142,7 @@ class Rds():
       
     # Store the symbols using the correct sample points
     self.rbdsSymbols = self.rbdsData[sampNdx[0:ndx]];
-    
+
     # Clean up and prepare for the next iteration
     # There is no overlap between this block and the next, discard the current block
     if (self.sampValPred-1 >= dataLen):
@@ -175,8 +174,7 @@ class Rds():
       errSig = rbdsReal * rbdsImag;
       self.errFilt = 0.9 * self.errFilt + 0.1 * errSig;
       
-      self.phsInc = self.errFilt;
-      self.phsVal = self.phsVal + self.phsInc;
+      self.phsVal = self.phsVal + self.errFilt;
       
       rawBits[ndx] = self.rbdsSymbols[ndx] * np.exp(1j*self.phsVal);
       rbdsReal = np.real(rawBits[ndx]);
